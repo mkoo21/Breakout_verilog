@@ -1,0 +1,105 @@
+`timescale 1ns / 1ns // `timescale time_unit/time_precision 
+
+module draw(input clk, input resetn, input [8:0] paddle_x, input [8:0] paddle_y, input draw_paddle, output reg [7:0] x, output reg [7:0] y, output reg [2:0] color, output reg writeEn);
+	reg [15:0] current_state, next_state;
+	reg [15:0] init_draw_prog;
+	reg [7:0] paddle_draw_prog;
+	reg [8:0] current_x;
+	reg [8:0] current_y;
+	
+	//Wall thickness is 8 pixels
+	
+	localparam 		PADDLE_SIZE = 8'd32, //16x2
+	
+						//Init
+						RIGHT_WALL_FINISHED = -16'd1,
+						TOP_WALL_FINISHED = -16'd1920,
+						LEFT_WALL_FINISHED = TOP_WALL_FINISHED - 16'd2560,
+						INIT_ = LEFT_WALL_FINISHED - 16'd1920, 
+						
+						//Loop 
+						WAIT = 16'd0,
+						PADDLE_ERASE_START = 16'd1,
+						PADDLE_ERASE_END = PADDLE_SIZE, //If pixels are missing, add 1 here
+						BTW_CYCLE_WAIT = PADDLE_ERASE_END + 1'b1,
+						PADDLE_DRAW_START = BTW_CYCLE_WAIT + 1'b1,
+						PADDLE_DRAW_END = PADDLE_DRAW_START + PADDLE_SIZE - 1'b1,
+						END_CYCLE_WAIT = PADDLE_DRAW_END + 1'b1,
+						LOAD_NEW_POSITION = PADDLE_DRAW_END + 1'b1;
+						
+	// State table
+    always@(posedge clk)
+    begin: state_table 
+            case (current_state)
+					 RIGHT_WALL_FINISHED: next_state = WAIT;
+                WAIT: next_state = draw_paddle ? PADDLE_ERASE_START : WAIT; //Enter cycle iff draw_paddle == 1;
+					 PADDLE_ERASE_END: next_state = BTW_CYCLE_WAIT;
+					 BTW_CYCLE_WAIT: next_state = PADDLE_DRAW_START;
+					 PADDLE_DRAW_END: next_state = LOAD_NEW_POSITION;
+					 LOAD_NEW_POSITION: next_state = WAIT;
+            default: next_state = 1'b1 + current_state; //If inside a draw cycle just keep going forward on each clock tick
+        endcase 
+    end // state_table
+	     // Output logic aka all of our datapath control signals
+    always @(posedge clk)
+    begin: output_signals
+        case (current_state)
+				INIT_: begin 
+					init_draw_prog <= 8'b0;
+					color <= 3'b1;
+				end
+				LEFT_WALL_FINISHED: init_draw_prog <= 8'b0;
+				TOP_WALL_FINISHED: init_draw_prog <= 8'b0;
+				RIGHT_WALL_FINISHED: init_draw_prog <= 8'b0;
+				WAIT: begin
+					writeEn <= 1'b0;
+					color[2:0] <= 3'b000;
+					paddle_draw_prog <= 8'b0;
+					init_draw_prog <= 8'b0;
+				end
+				PADDLE_ERASE_START: begin
+					color[2:0] <= 3'b000;
+					paddle_draw_prog <= 8'b0;
+				end
+				PADDLE_DRAW_START: begin 
+					color[2:0] <= 3'b001;
+					paddle_draw_prog <= 8'b0;
+					current_x [8:0] <= paddle_x[8:0];
+					current_y [8:0] <= paddle_y[8:0];
+				end
+				LOAD_NEW_POSITION: begin
+					current_x [8:0] <= paddle_x[8:0];
+					current_y [8:0] <= paddle_y[8:0];
+				end
+				default: begin 
+					writeEn <= 1'b1;//in a cycle
+					//multiplexer
+					if(INIT_ < current_state < LEFT_WALL_FINISHED) begin
+						x <= init_draw_prog % 4'd8; //Wall width
+						y <= init_draw_prog / 4'd8;
+					end
+					else if(LEFT_WALL_FINISHED < current_state < TOP_WALL_FINISHED) begin
+						x <= init_draw_prog % 9'd320;
+						y <= init_draw_prog / 9'd320;
+					end
+					else if(TOP_WALL_FINISHED < current_state < RIGHT_WALL_FINISHED) begin
+						x <= 9'd320 + init_draw_prog % 4'd8; //Wall width
+						y <= init_draw_prog / 4'd8;
+					end
+					else begin //drawing paddle
+						x <= current_x + paddle_draw_prog % 8'd16; //PADDLE_WIDTH
+						y <= current_y + paddle_draw_prog / 8'd16;
+					end
+					//Increment all progress pointers (they are all reset at the beginning of the relevant draw cycle anyways)
+					init_draw_prog <= init_draw_prog + 1'b1;
+					paddle_draw_prog <= paddle_draw_prog + 1'b1;
+				end
+        endcase
+    end 
+	 
+	 always @(posedge clk)
+		if (!resetn)
+			current_state <= INIT_;
+		else
+			current_state <= next_state;
+endmodule

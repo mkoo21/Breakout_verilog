@@ -1,0 +1,44 @@
+`timescale 1ns / 1ns // `timescale time_unit/time_precision 
+
+module paddle_control(
+    input clk,
+    input resetn,
+    input [1:0] go, //[1,0] is left, [0,1] is right, [0,0] is stay
+
+    output reg draw,
+	 output reg [7:0] current_state
+    );
+
+    reg [7:0] next_state; 
+    
+    localparam  BRICK_WIDTH = 8'd16,
+					 BRICK_HEIGHT = 8'd8,
+					 PADDLE_WIDTH = 8'd16,
+					 PADDLE_HEIGHT = 8'd2,
+					 PADDLE_SIZE = 8'd64, //kinda cheating but whatever... change if paddle dimensions change
+					 PADDLE_Y_POS = 8'd230;
+					 //TODO: Figure out left/right walls and change the side states to the corresponding numbers
+    
+    // State table
+    always@(posedge clk)
+    begin: state_table 
+         case (current_state)
+                8'd0: next_state = go[0] + current_state; //Paddle is on far left side
+					 8'd160 - PADDLE_WIDTH: next_state = (-go[1]) + current_state; //Paddle is on far right side
+            default: next_state = (go[0] ? 1 : -go[1]) + current_state; //Paddle can go either direction depending on input
+        endcase
+    end // state_table
+   
+	// current_state registers
+    always@(posedge clk)
+    begin: state_FFs
+		  draw <= 1;
+        if(resetn == 1'b0)
+            current_state <= 8'd160 - 8'd8; //midway minus half BRICK_WIDTH
+        else begin
+            if (current_state == next_state) draw <= 0;
+				current_state <= next_state;
+			end
+    end // state_FFS
+
+endmodule

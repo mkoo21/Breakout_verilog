@@ -1,0 +1,20 @@
+`timescale 1ns / 1ns // `timescale time_unit/time_precision 
+
+module collision(input clk, input [8:0] ball_x, input [7:0] ball_y, output reg [1:0] WALL_HIT);
+	//clock @ 60 fps
+	//checks for wall collisions 
+	
+	localparam WALL_WIDTH = 4'd8,
+					LEFT_WALL_X = WALL_WIDTH,
+					TOP_WALL_Y = WALL_WIDTH,
+					RIGHT_WALL_X = 9'd320 - WALL_WIDTH;
+					
+					always @(posedge clk) begin
+					//Let ball have dim 2x2
+					//WALL_HIT == 1 means left wall was hit, WALL_HIT == 2 means top wall was hit, 3 means right wall was hit
+						WALL_HIT <= 2'b0;
+						if(ball_x < LEFT_WALL_X) WALL_HIT <= 2'd1; 
+						if(ball_y < TOP_WALL_Y) WALL_HIT <= 2'd2;
+						if(ball_x + 8'd2 > RIGHT_WALL_X) WALL_HIT <= 2'd3;
+					end
+endmodule
